@@ -14,6 +14,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // SSRF 방어: 허용된 CDN 도메인만 프록시
+    const ALLOWED_HOSTS = [
+      'cdninstagram.com', 'scontent', 'fbcdn.net',
+      'video.twimg.com', 'pbs.twimg.com',
+      'licdn.com', 'linkedin.com',
+      'snapchat.com', 'snapcdn.com',
+      'googlevideo.com', 'youtube.com',
+    ];
+    let parsedHost: string;
+    try {
+      parsedHost = new URL(url).hostname;
+    } catch {
+      return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
+    }
+    if (!ALLOWED_HOSTS.some(h => parsedHost.includes(h))) {
+      return NextResponse.json({ error: 'URL host is not allowed' }, { status: 403 });
+    }
+
     // Detect if it's a YouTube/Google Video URL
     const isYouTube = url.includes('googlevideo.com') || url.includes('youtube.com');
 
@@ -58,8 +76,8 @@ export async function GET(request: NextRequest) {
 
     // Determine file extension and content type
     const ext = type === 'video' ? 'mp4' : 'jpg';
-    const contentType = response.headers['content-type'] || (type === 'video' ? 'video/mp4' : 'image/jpeg');
-    const contentLength = response.headers['content-length'];
+    const contentType = String(response.headers['content-type'] || (type === 'video' ? 'video/mp4' : 'image/jpeg'));
+    const contentLength = String(response.headers['content-length'] || '');
     
     // Determine platform from URL for better naming
     let platform = 'media';
