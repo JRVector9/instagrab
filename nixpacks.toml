@@ -1,0 +1,8 @@
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build", "cp .env.production .next/standalone/.env.production"]
+
+[start]
+cmd = "node .next/standalone/server.js"
