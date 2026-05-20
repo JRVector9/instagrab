@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  basePath: '/grabit',
+  output: 'standalone',
   reactStrictMode: true,
   compress: true,
   poweredByHeader: false,
