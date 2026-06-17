@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateApiKey } from '@/lib/apiAuth';
+import { checkRateLimit } from '@/lib/rateLimiter';
+import { trackRequest } from '@/lib/usageTracker';
 import { detectPlatform } from '@/lib/media/detectPlatform';
 import { fetchInstagram } from '@/lib/media/providers/instagram';
 import { fetchTwitter } from '@/lib/media/providers/twitter';
 import { fetchThreads } from '@/lib/media/providers/threads';
 import { fetchLinkedin } from '@/lib/media/providers/linkedin';
-import { fetchSnapchat } from '@/lib/media/providers/snapchat';
 import { isMediaError } from '@/lib/media/types';
+
+export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   const authError = validateApiKey(request);
   if (authError) return authError;
+
+  const apiKey = request.headers.get('x-api-key')!;
+  const rateLimitError = await checkRateLimit(apiKey);
+  if (rateLimitError) return rateLimitError;
 
   const url = request.nextUrl.searchParams.get('url');
   if (!url) {
@@ -27,32 +34,27 @@ export async function GET(request: NextRequest) {
   const platform = detectPlatform(parsedUrl.href);
   if (!platform) {
     return NextResponse.json(
-      { success: false, error: 'Unsupported platform. Supported: instagram, twitter/x, threads, linkedin, snapchat' },
+      { success: false, error: 'Unsupported platform. Supported: instagram, twitter/x, threads, linkedin' },
       { status: 400 }
     );
   }
 
+  const start = Date.now();
   try {
-    const providers = { instagram: fetchInstagram, twitter: fetchTwitter, threads: fetchThreads, linkedin: fetchLinkedin, snapchat: fetchSnapchat };
+    const providers = { instagram: fetchInstagram, twitter: fetchTwitter, threads: fetchThreads, linkedin: fetchLinkedin };
     const result = await providers[platform](parsedUrl.href);
 
     if (isMediaError(result)) {
+      await trackRequest({ platform, success: false, latencyMs: Date.now() - start });
       return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     }
 
+    await trackRequest({ platform, success: true, latencyMs: Date.now() - start });
     return NextResponse.json({ success: true, platform, data: result });
   } catch (error: any) {
     console.error(`[v1/media] ${platform} error:`, error.message);
+    await trackRequest({ platform, success: false, latencyMs: Date.now() - start });
     return NextResponse.json({ success: false, error: 'Failed to fetch media. Please try again.' }, { status: 500 });
   }
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'X-API-Key, Content-Type',
-    },
-  });
-}

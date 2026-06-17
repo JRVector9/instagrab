@@ -1,5 +1,13 @@
 import axios from 'axios';
 import { MediaResponse } from '../types';
+import { outboundConfig } from '@/lib/httpClient';
+
+function isAllowedTwitterUrl(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h.endsWith('.twimg.com') || h === 'twimg.com';
+  } catch { return false; }
+}
 
 export async function fetchTwitter(url: string): Promise<MediaResponse> {
   const twitterRegex = /^https?:\/\/(www\.)?(twitter\.com|x\.com)\/[A-Za-z0-9_]+\/status\/\d+/;
@@ -13,6 +21,7 @@ export async function fetchTwitter(url: string): Promise<MediaResponse> {
   // Method 1: fxtwitter
   try {
     const fxResponse = await axios.get(`https://api.fxtwitter.com/status/${tweetId}`, {
+      ...outboundConfig,
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       timeout: 15000,
     });
@@ -22,24 +31,29 @@ export async function fetchTwitter(url: string): Promise<MediaResponse> {
         const best = tweetData.media.videos.reduce((prev: any, cur: any) =>
           cur.width > prev.width ? cur : prev
         );
-        return {
-          type: 'video',
-          mediaUrl: best.url,
-          title: tweetData.text || 'Twitter Video',
-          description: tweetData.author?.name || '',
-          thumbnail: tweetData.media.videos[0]?.thumbnail_url || undefined,
-        };
+        if (isAllowedTwitterUrl(best.url)) {
+          return {
+            type: 'video',
+            mediaUrl: best.url,
+            title: tweetData.text || 'Twitter Video',
+            description: tweetData.author?.name || '',
+            thumbnail: tweetData.media.videos[0]?.thumbnail_url || undefined,
+          };
+        }
       }
       if (tweetData.media?.photos?.length > 0) {
-        return {
-          type: 'image',
-          mediaUrl: tweetData.media.photos[0].url,
-          title: tweetData.text || 'Twitter Image',
-          description: tweetData.author?.name || '',
-        };
+        const photoUrl = tweetData.media.photos[0].url;
+        if (isAllowedTwitterUrl(photoUrl)) {
+          return {
+            type: 'image',
+            mediaUrl: photoUrl,
+            title: tweetData.text || 'Twitter Image',
+            description: tweetData.author?.name || '',
+          };
+        }
       }
       const gifMedia = tweetData.media?.all?.find((m: any) => m.type === 'gif' || m.type === 'video');
-      if (gifMedia) {
+      if (gifMedia && isAllowedTwitterUrl(gifMedia.url)) {
         return {
           type: 'video',
           mediaUrl: gifMedia.url,
@@ -54,18 +68,21 @@ export async function fetchTwitter(url: string): Promise<MediaResponse> {
   try {
     const vxUrl = url.replace(/https?:\/\/(www\.)?(twitter\.com|x\.com)/, 'https://api.vxtwitter.com');
     const vxResponse = await axios.get(vxUrl, {
+      ...outboundConfig,
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       timeout: 15000,
     });
     const vxData = vxResponse.data;
     if (vxData?.media_extended?.length > 0) {
       const media = vxData.media_extended[0];
-      return {
-        type: media.type === 'image' ? 'image' : 'video',
-        mediaUrl: media.url,
-        title: vxData.text || 'Twitter Media',
-        description: vxData.user_name || '',
-      };
+      if (isAllowedTwitterUrl(media.url)) {
+        return {
+          type: media.type === 'image' ? 'image' : 'video',
+          mediaUrl: media.url,
+          title: vxData.text || 'Twitter Media',
+          description: vxData.user_name || '',
+        };
+      }
     }
   } catch { /* fall through */ }
 

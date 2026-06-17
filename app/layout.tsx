@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     default: "grabit2me - Free Social Media Video Downloader | Instagram, X, YouTube, Threads",
     template: "%s | grabit2me"
   },
-  description: "Download videos and images from Instagram, X (Twitter), Threads, LinkedIn, Snapchat, and YouTube instantly. Free, fast, and no login required. Best social media video downloader tool.",
+  description: "Download videos and images from Instagram, X (Twitter), Threads, LinkedIn, and YouTube instantly. Free, fast, and no login required. Best social media video downloader tool.",
   keywords: [
     "video downloader",
     "instagram downloader",
@@ -47,7 +47,6 @@ export const metadata: Metadata = {
     "youtube downloader",
     "youtube video downloader",
     "linkedin video downloader",
-    "snapchat downloader",
     "social media downloader",
     "download videos",
     "download reels",

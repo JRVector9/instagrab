@@ -29,14 +29,13 @@ interface MediaResponse {
   previewQuality?: string;
 }
 
-type Platform = 'instagram' | 'twitter' | 'threads' | 'linkedin' | 'snapchat' | 'unsupported';
+type Platform = 'instagram' | 'twitter' | 'threads' | 'linkedin' | 'unsupported';
 
 const PLATFORM_NAMES: Record<Platform, string> = {
   instagram: 'Instagram',
   twitter: 'X (Twitter)',
   threads: 'Threads',
   linkedin: 'LinkedIn',
-  snapchat: 'Snapchat',
   unsupported: 'Unknown',
 };
 
@@ -63,7 +62,6 @@ export default function Home() {
     if (u.includes('twitter.com') || u.includes('x.com')) return 'twitter';
     if (u.includes('threads.net') || u.includes('threads.com')) return 'threads';
     if (u.includes('linkedin.com')) return 'linkedin';
-    if (u.includes('snapchat.com')) return 'snapchat';
     return 'unsupported';
   };
 
@@ -97,7 +95,7 @@ export default function Home() {
     if (!url.trim()) { setError('Please enter a URL'); return; }
     const platform = detectPlatform(url);
     if (platform === 'unsupported') {
-      setError('Platform not supported. Supported: Instagram, Twitter/X, Threads, LinkedIn, Snapchat');
+      setError('Platform not supported. Supported: Instagram, Twitter/X, Threads, LinkedIn');
       return;
     }
     setAnalyzingPlatform(platform);
@@ -110,8 +108,7 @@ export default function Home() {
         platform === 'instagram' ? 'api/instagram'
         : platform === 'twitter' ? 'api/twitter'
         : platform === 'threads' ? 'api/threads'
-        : platform === 'linkedin' ? 'api/linkedin'
-        : 'api/snapchat';
+        : 'api/linkedin';
 
       const response = await fetch(apiEndpoint, {
         method: 'POST',

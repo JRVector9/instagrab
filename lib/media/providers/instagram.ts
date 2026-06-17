@@ -1,6 +1,17 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { MediaResponse } from '../types';
+import { outboundConfig } from '@/lib/httpClient';
+
+function isAllowedInstagramUrl(url: string): boolean {
+  try {
+    const { hostname: h, protocol } = new URL(url);
+    if (protocol !== 'https:') return false;
+    const lh = h.toLowerCase();
+    return lh.endsWith('.cdninstagram.com') || lh === 'cdninstagram.com' ||
+           lh.endsWith('.fbcdn.net') || lh === 'fbcdn.net';
+  } catch { return false; }
+}
 
 export async function fetchInstagram(url: string): Promise<MediaResponse> {
   const instagramRegex = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv|stories)\/[A-Za-z0-9_-]+\/?/;
@@ -14,6 +25,7 @@ export async function fetchInstagram(url: string): Promise<MediaResponse> {
   let response;
   try {
     response = await axios.get(url, {
+      ...outboundConfig,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -33,6 +45,7 @@ export async function fetchInstagram(url: string): Promise<MediaResponse> {
     const shortcode = url.match(/\/(p|reel|tv|stories)\/([A-Za-z0-9_-]+)/)?.[2];
     if (shortcode && !isStory) {
       response = await axios.get(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, {
+        ...outboundConfig,
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
         timeout: 15000,
       });
@@ -145,6 +158,9 @@ export async function fetchInstagram(url: string): Promise<MediaResponse> {
   }
   if (isReel && type === 'image') {
     return { error: 'Could not extract video from this reel. It might be private or unsupported.', status: 404 };
+  }
+  if (!isAllowedInstagramUrl(mediaUrl)) {
+    return { error: 'Could not extract media from this URL. It might be private or unavailable.', status: 404 };
   }
 
   return {

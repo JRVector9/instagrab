@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { MediaResponse } from '../types';
+import { outboundConfig } from '@/lib/httpClient';
 
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -97,6 +98,7 @@ async function fetchWithRetry(url: string, maxRetries = 2): Promise<any> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await axios.get(url, {
+        ...outboundConfig,
         headers: {
           'User-Agent': randomUA(),
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -108,7 +110,7 @@ async function fetchWithRetry(url: string, maxRetries = 2): Promise<any> {
           'Sec-Fetch-Site': 'none', 'Sec-Fetch-User': '?1',
           'Cache-Control': 'max-age=0',
         },
-        timeout: 20000, maxRedirects: 5,
+        timeout: 20000, maxRedirects: 0,
       });
     } catch (err: any) {
       lastError = err;
@@ -223,6 +225,20 @@ export async function fetchThreads(url: string): Promise<MediaResponse> {
 
   if (mediaUrl.startsWith('//')) mediaUrl = 'https:' + mediaUrl;
   if (type === 'video' && embeddedData.videoVersions.length > 1) mediaUrl = embeddedData.videoVersions[0];
+
+  // 반환 URL이 허용된 Meta CDN 도메인인지 검증
+  const isAllowedThreadsUrl = (u: string) => {
+    try {
+      const { hostname: h, protocol } = new URL(u);
+      if (protocol !== 'https:') return false;
+      const lh = h.toLowerCase();
+      return lh.endsWith('.cdninstagram.com') || lh === 'cdninstagram.com' ||
+             lh.endsWith('.fbcdn.net') || lh === 'fbcdn.net';
+    } catch { return false; }
+  };
+  if (!isAllowedThreadsUrl(mediaUrl)) {
+    return { error: 'Could not extract media from this Threads post. The post may be private, deleted, or contain only text.', status: 404 };
+  }
 
   return {
     type,
