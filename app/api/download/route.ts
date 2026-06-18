@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { promises as dns } from 'dns';
-import { outboundConfig } from '@/lib/httpClient';
+import { getOutboundConfig } from '@/lib/httpClient';
 
 export const runtime = 'nodejs';
 
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response = await axios.get(url, {
-      ...outboundConfig,
+      ...getOutboundConfig(),
       responseType: 'stream', // Use stream instead of arraybuffer for large files
       headers,
       timeout: isYouTube ? 60000 : 120000,

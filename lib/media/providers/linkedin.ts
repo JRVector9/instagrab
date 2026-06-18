@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { MediaResponse } from '../types';
-import { outboundConfig } from '@/lib/httpClient';
+import { getOutboundConfig } from '@/lib/httpClient';
 
 export async function fetchLinkedin(url: string): Promise<MediaResponse> {
   const linkedinRegex = /^https?:\/\/(www\.)?linkedin\.com\//;
@@ -14,7 +14,7 @@ export async function fetchLinkedin(url: string): Promise<MediaResponse> {
       'https://saywhat.ai/api/fetch-linkedin-page/',
       { url },
       {
-        ...outboundConfig,
+        ...getOutboundConfig(),
         headers: {
           accept: '*/*',
           'content-type': 'application/json',

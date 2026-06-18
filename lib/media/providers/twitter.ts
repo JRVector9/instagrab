@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { MediaResponse } from '../types';
-import { outboundConfig } from '@/lib/httpClient';
+import { getOutboundConfig } from '@/lib/httpClient';
 
 function isAllowedTwitterUrl(url: string): boolean {
   try {
@@ -21,7 +21,7 @@ export async function fetchTwitter(url: string): Promise<MediaResponse> {
   // Method 1: fxtwitter
   try {
     const fxResponse = await axios.get(`https://api.fxtwitter.com/status/${tweetId}`, {
-      ...outboundConfig,
+      ...getOutboundConfig(),
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       timeout: 15000,
     });
@@ -68,7 +68,7 @@ export async function fetchTwitter(url: string): Promise<MediaResponse> {
   try {
     const vxUrl = url.replace(/https?:\/\/(www\.)?(twitter\.com|x\.com)/, 'https://api.vxtwitter.com');
     const vxResponse = await axios.get(vxUrl, {
-      ...outboundConfig,
+      ...getOutboundConfig(),
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       timeout: 15000,
     });
