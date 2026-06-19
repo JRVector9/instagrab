@@ -168,6 +168,7 @@ export async function fetchInstagram(url: string): Promise<MediaResponse> {
   return {
     type,
     mediaUrl,
+    thumbnail: ogImage || undefined,
     title: ogTitle || 'Instagram Post',
     description: ogDescription || '',
   };
