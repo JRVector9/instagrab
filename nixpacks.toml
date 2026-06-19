@@ -1,3 +1,6 @@
+[phases.setup]
+aptPkgs = ["yt-dlp"]
+
 [phases.install]
 cmds = ["npm install"]
 
