@@ -41,22 +41,10 @@ export function validateLang(lang: string): string {
 }
 
 function getProxyArg(): string | null {
-  // YT_DLP_PROXY를 우선 사용 (Tailscale IP를 우회하는 전용 프록시)
+  // YT_DLP_PROXY가 명시된 경우만 사용 (서버 IP는 YouTube 직접 접근 가능)
   const explicit = process.env.YT_DLP_PROXY;
-  if (explicit) return explicit.startsWith('socks5://') ? explicit.replace('socks5://', 'socks5h://') : explicit;
-
-  // 폴백: OUTBOUND_CHANNELS에서 LAN/공인 socks5 추출 (Tailscale 100.x 제외)
-  const raw = process.env.OUTBOUND_CHANNELS || '';
-  for (const ch of raw.split(',')) {
-    const c = ch.trim();
-    if (!c.startsWith('socks5://')) continue;
-    const host = c.replace('socks5://', '').split(':')[0];
-    // Tailscale IP (100.64~127.x) 제외
-    const firstOctet = parseInt(host.split('.')[0], 10);
-    if (firstOctet === 100) continue;
-    return c.replace('socks5://', 'socks5h://');
-  }
-  return null;
+  if (!explicit) return null;
+  return explicit.startsWith('socks5://') ? explicit.replace('socks5://', 'socks5h://') : explicit;
 }
 
 // json3 포맷: { events: [{ tStartMs, dDurationMs, segs: [{utf8}] }] }
