@@ -4,8 +4,58 @@ import { mkdtemp, readdir, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { YoutubeTranscript } from 'youtube-transcript';
+import Redis from 'ioredis';
 
 const execFileAsync = promisify(execFile);
+
+// Fix 1: 서버별 yt-dlp 동시 실행 상한
+const MAX_YTDLP_CONCURRENT = 3;
+let ytdlpConcurrent = 0;
+
+// Fix 2: Redis 캐시/락 클라이언트
+let cacheRedis: Redis | null = null;
+function getCacheRedis(): Redis | null {
+  if (!process.env.REDIS_URL) return null;
+  if (!cacheRedis) cacheRedis = new Redis(process.env.REDIS_URL, { enableOfflineQueue: false });
+  return cacheRedis;
+}
+
+const CACHE_TTL = 86400; // 24h
+const LOCK_TTL = 35;    // yt-dlp timeout(30s) + 여유
+
+async function getCache(videoId: string, lang: string): Promise<TranscriptResult | null> {
+  const r = getCacheRedis();
+  if (!r) return null;
+  try {
+    const raw = await r.get(`transcript:${videoId}:${lang}`);
+    return raw ? (JSON.parse(raw) as TranscriptResult) : null;
+  } catch { return null; }
+}
+
+async function setCache(videoId: string, lang: string, result: TranscriptResult): Promise<void> {
+  const r = getCacheRedis();
+  if (!r) return;
+  try {
+    await r.setex(`transcript:${videoId}:${lang}`, CACHE_TTL, JSON.stringify(result));
+  } catch { /* 캐시 저장 실패는 무시 */ }
+}
+
+async function acquireLock(videoId: string, lang: string): Promise<string | null> {
+  const r = getCacheRedis();
+  if (!r) return null;
+  const token = Math.random().toString(36).slice(2);
+  try {
+    const ok = await r.set(`transcript:lock:${videoId}:${lang}`, token, 'EX', LOCK_TTL, 'NX');
+    return ok ? token : null;
+  } catch { return null; }
+}
+
+async function releaseLock(videoId: string, lang: string, token: string): Promise<void> {
+  const r = getCacheRedis();
+  if (!r) return;
+  const lua = `if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end`;
+  try { await r.eval(lua, 1, `transcript:lock:${videoId}:${lang}`, token); } catch { /* ignore */ }
+}
 
 const VALID_LANGS = new Set(['ko', 'en', 'en-US', 'ja', 'zh', 'zh-TW', 'es', 'fr', 'de', 'pt']);
 
@@ -31,7 +81,7 @@ export function extractVideoId(url: string): string | null {
     const u = new URL(url);
     let id: string | null = null;
     if (u.hostname === 'youtu.be') id = u.pathname.slice(1).split('?')[0] || null;
-    else if (u.hostname.includes('youtube.com')) id = u.searchParams.get('v');
+    else if (u.hostname === 'youtube.com' || u.hostname.endsWith('.youtube.com')) id = u.searchParams.get('v');
     return id && VIDEO_ID_RE.test(id) ? id : null;
   } catch { return null; }
 }
@@ -64,7 +114,13 @@ function parseJson3(raw: string): TranscriptSegment[] {
   return segments;
 }
 
-async function fetchViaYtDlp(videoId: string, lang: string): Promise<TranscriptResult> {
+async function fetchViaYtDlp(videoId: string, lang: string, signal?: AbortSignal): Promise<TranscriptResult> {
+  // Fix 1: 서버별 동시 실행 상한
+  if (ytdlpConcurrent >= MAX_YTDLP_CONCURRENT) {
+    throw Object.assign(new Error('자막 서버 과부하, 잠시 후 재시도해주세요'), { status: 503 });
+  }
+  ytdlpConcurrent++;
+
   const tmpDir = await mkdtemp(join(tmpdir(), `yt_${videoId}_`));
   try {
     const outputTemplate = join(tmpDir, 'transcript');
@@ -81,7 +137,15 @@ async function fetchViaYtDlp(videoId: string, lang: string): Promise<TranscriptR
     const proxy = getProxyArg();
     if (proxy) args.unshift('--proxy', proxy);
 
-    await execFileAsync('yt-dlp', args, { timeout: 30000 });
+    // Fix 9: 클라이언트 연결 끊김 시 yt-dlp 프로세스도 종료
+    const ac = new AbortController();
+    const onAbort = () => ac.abort();
+    signal?.addEventListener('abort', onAbort);
+    try {
+      await execFileAsync('yt-dlp', args, { timeout: 30000, signal: ac.signal });
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+    }
 
     const files = await readdir(tmpDir);
     const json3File = files.find(f => f.endsWith('.json3'));
@@ -101,6 +165,7 @@ async function fetchViaYtDlp(videoId: string, lang: string): Promise<TranscriptR
       fullText: segments.map(s => s.text).join(' '),
     };
   } finally {
+    ytdlpConcurrent--;
     await rm(tmpDir, { recursive: true, force: true });
   }
 }
@@ -125,22 +190,54 @@ async function fetchViaNpm(videoId: string, lang: string): Promise<TranscriptRes
   };
 }
 
-export async function fetchTranscript(url: string, lang: string): Promise<TranscriptResult> {
+export async function fetchTranscript(url: string, lang: string, signal?: AbortSignal): Promise<TranscriptResult> {
   const videoId = extractVideoId(url);
   if (!videoId) throw Object.assign(new Error('유효한 YouTube URL이 아닙니다'), { status: 400 });
 
   const validLang = validateLang(lang);
 
-  try {
-    return await fetchViaYtDlp(videoId, validLang);
-  } catch (e1) {
+  // Fix 2: Redis 캐시 확인
+  const cached = await getCache(videoId, validLang);
+  if (cached) return cached;
+
+  // Fix 2: distributed lock — 같은 videoId/lang 중복 실행 방지
+  const lockToken = await acquireLock(videoId, validLang);
+  if (lockToken) {
     try {
-      return await fetchViaNpm(videoId, validLang);
-    } catch (e2) {
+      // 락 획득 후 재확인 (다른 서버가 먼저 채웠을 수 있음)
+      const cached2 = await getCache(videoId, validLang);
+      if (cached2) return cached2;
+
+      let result: TranscriptResult;
+      try {
+        result = await fetchViaYtDlp(videoId, validLang, signal);
+      } catch {
+        result = await fetchViaNpm(videoId, validLang);
+      }
+      await setCache(videoId, validLang, result);
+      return result;
+    } catch {
       throw Object.assign(
         new Error('자막을 가져올 수 없습니다. 자막이 없거나 비공개 영상일 수 있습니다.'),
         { status: 404 }
       );
+    } finally {
+      await releaseLock(videoId, validLang, lockToken);
     }
+  }
+
+  // 락 획득 실패 — 다른 서버가 이미 처리 중, 잠시 대기 후 캐시 재시도
+  await new Promise((r) => setTimeout(r, 3000));
+  const cached3 = await getCache(videoId, validLang);
+  if (cached3) return cached3;
+
+  // 캐시 없으면 직접 실행 (npm 폴백만)
+  try {
+    return await fetchViaNpm(videoId, validLang);
+  } catch {
+    throw Object.assign(
+      new Error('자막을 가져올 수 없습니다. 자막이 없거나 비공개 영상일 수 있습니다.'),
+      { status: 404 }
+    );
   }
 }

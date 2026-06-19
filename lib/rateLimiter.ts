@@ -10,6 +10,23 @@ let hourLimiter: RateLimiterRedis | null = null;
 let consecutiveRedisFailures = 0;
 let circuitOpenUntil = 0;
 
+// Fix 3: Redis 장애 시 로컬 인메모리 폴백 (분당 10건)
+const LOCAL_LIMIT = 10;
+const LOCAL_WINDOW_MS = 60_000;
+const localCounters = new Map<string, { count: number; windowStart: number }>();
+
+function checkLocalFallback(id: string): boolean {
+  const now = Date.now();
+  const entry = localCounters.get(id);
+  if (!entry || now - entry.windowStart > LOCAL_WINDOW_MS) {
+    localCounters.set(id, { count: 1, windowStart: now });
+    return true;
+  }
+  if (entry.count >= LOCAL_LIMIT) return false;
+  entry.count++;
+  return true;
+}
+
 function getRedis(): Redis | null {
   if (!process.env.REDIS_URL) return null;
   if (!redisClient) {
@@ -76,8 +93,8 @@ export async function checkRateLimit(apiKey: string): Promise<NextResponse | nul
       await limiters.minute.consume(id);
     } catch (e: any) {
       if (e?.msBeforeNext !== undefined) {
-        // 분당 제한 초과 시 시간당 카운트 복구
-        await limiters.hour.reward(id).catch(() => {});
+        // 분당 제한 초과 시 시간당 카운트 복구 (Fix 7: 실패 로깅)
+        await limiters.hour.reward(id).catch((e) => console.error('[rateLimiter] reward() 실패:', e));
         const reset = Date.now() + e.msBeforeNext;
         return NextResponse.json(
           { success: false, error: 'Rate limit exceeded (per minute)' },
@@ -101,7 +118,14 @@ export async function checkRateLimit(apiKey: string): Promise<NextResponse | nul
       circuitOpenUntil = Date.now() + 30_000;
       consecutiveRedisFailures = 0;
     }
-    console.error('[rateLimiter] Redis error — 요청 통과 처리:', e);
+    console.error('[rateLimiter] Redis error — 로컬 폴백 적용:', e);
+    // Fix 3: Redis 장애 시 인메모리 로컬 제한 적용 (분당 10건)
+    if (!checkLocalFallback(id)) {
+      return NextResponse.json(
+        { success: false, error: 'Rate limit exceeded (fallback)' },
+        { status: 429, headers: { 'Retry-After': '60' } }
+      );
+    }
     return null;
   }
 

@@ -28,7 +28,8 @@ function buildChannels(): OutboundConfig[] {
 }
 
 const channels: OutboundConfig[] = buildChannels();
-let channelIndex = 0;
+// Fix 6: 서버 기동마다 다른 채널부터 시작해 두 서버 간 채널 집중 방지
+let channelIndex = channels.length > 1 ? Math.floor(Math.random() * channels.length) : 0;
 
 export function getOutboundConfig(): OutboundConfig {
   if (channels.length === 1) return channels[0];
