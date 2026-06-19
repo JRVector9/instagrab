@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { MediaResponse } from '../types';
-import { getOutboundConfig } from '@/lib/httpClient';
+import { fetchWithFallback } from '@/lib/httpClient';
 
 function isAllowedInstagramUrl(url: string): boolean {
   try {
@@ -22,33 +22,35 @@ export async function fetchInstagram(url: string): Promise<MediaResponse> {
   const isReel = url.includes('/reel/');
   const isStory = url.includes('/stories/');
 
+  const igHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'DNT': '1',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Cache-Control': 'max-age=0',
+  };
+
   let response;
   try {
-    response = await axios.get(url, {
-      ...getOutboundConfig(),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0',
-      },
-      timeout: 15000,
-    });
+    response = await fetchWithFallback((cfg) =>
+      axios.get(url, { ...cfg, headers: igHeaders, timeout: 15000 })
+    );
   } catch (err) {
     const shortcode = url.match(/\/(p|reel|tv|stories)\/([A-Za-z0-9_-]+)/)?.[2];
     if (shortcode && !isStory) {
-      response = await axios.get(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, {
-        ...getOutboundConfig(),
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-        timeout: 15000,
-      });
+      response = await fetchWithFallback((cfg) =>
+        axios.get(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, {
+          ...cfg,
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          timeout: 15000,
+        })
+      );
     } else {
       throw err;
     }

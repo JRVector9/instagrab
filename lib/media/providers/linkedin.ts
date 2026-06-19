@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { MediaResponse } from '../types';
-import { getOutboundConfig } from '@/lib/httpClient';
+import { fetchWithFallback } from '@/lib/httpClient';
 
 export async function fetchLinkedin(url: string): Promise<MediaResponse> {
   const linkedinRegex = /^https?:\/\/(www\.)?linkedin\.com\//;
@@ -10,18 +10,20 @@ export async function fetchLinkedin(url: string): Promise<MediaResponse> {
 
   let data: { videos?: string[]; title?: string; author?: string };
   try {
-    const response = await axios.post(
-      'https://saywhat.ai/api/fetch-linkedin-page/',
-      { url },
-      {
-        ...getOutboundConfig(),
-        headers: {
-          accept: '*/*',
-          'content-type': 'application/json',
-          Referer: 'https://saywhat.ai/tools/linkedin-video-downloader/',
-        },
-        timeout: 15000,
-      }
+    const response = await fetchWithFallback((cfg) =>
+      axios.post(
+        'https://saywhat.ai/api/fetch-linkedin-page/',
+        { url },
+        {
+          ...cfg,
+          headers: {
+            accept: '*/*',
+            'content-type': 'application/json',
+            Referer: 'https://saywhat.ai/tools/linkedin-video-downloader/',
+          },
+          timeout: 15000,
+        }
+      )
     );
     data = response.data;
   } catch {

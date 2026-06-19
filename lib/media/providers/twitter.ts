@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { MediaResponse } from '../types';
-import { getOutboundConfig } from '@/lib/httpClient';
+import { fetchWithFallback } from '@/lib/httpClient';
 
 function isAllowedTwitterUrl(url: string): boolean {
   try {
@@ -20,11 +20,13 @@ export async function fetchTwitter(url: string): Promise<MediaResponse> {
 
   // Method 1: fxtwitter
   try {
-    const fxResponse = await axios.get(`https://api.fxtwitter.com/status/${tweetId}`, {
-      ...getOutboundConfig(),
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      timeout: 15000,
-    });
+    const fxResponse = await fetchWithFallback((cfg) =>
+      axios.get(`https://api.fxtwitter.com/status/${tweetId}`, {
+        ...cfg,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        timeout: 15000,
+      })
+    );
     const tweetData = fxResponse.data?.tweet;
     if (tweetData) {
       if (tweetData.media?.videos?.length > 0) {
@@ -67,11 +69,13 @@ export async function fetchTwitter(url: string): Promise<MediaResponse> {
   // Method 2: vxtwitter
   try {
     const vxUrl = url.replace(/https?:\/\/(www\.)?(twitter\.com|x\.com)/, 'https://api.vxtwitter.com');
-    const vxResponse = await axios.get(vxUrl, {
-      ...getOutboundConfig(),
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      timeout: 15000,
-    });
+    const vxResponse = await fetchWithFallback((cfg) =>
+      axios.get(vxUrl, {
+        ...cfg,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        timeout: 15000,
+      })
+    );
     const vxData = vxResponse.data;
     if (vxData?.media_extended?.length > 0) {
       const media = vxData.media_extended[0];
