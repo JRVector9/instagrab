@@ -1,5 +1,6 @@
 [phases.setup]
-aptPkgs = ["yt-dlp"]
+aptPkgs = ["python3", "ffmpeg"]
+cmds = ["curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp"]
 
 [phases.install]
 cmds = ["npm install"]
