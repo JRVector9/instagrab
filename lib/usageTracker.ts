@@ -5,7 +5,7 @@ let redis: Redis | null = null;
 function getRedis(): Redis | null {
   if (!process.env.REDIS_URL) return null;
   if (!redis) {
-    redis = new Redis(process.env.REDIS_URL, { lazyConnect: true, enableOfflineQueue: false });
+    redis = new Redis(process.env.REDIS_URL, { enableOfflineQueue: false });
   }
   return redis;
 }

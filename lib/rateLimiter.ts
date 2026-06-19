@@ -13,7 +13,7 @@ let circuitOpenUntil = 0;
 function getRedis(): Redis | null {
   if (!process.env.REDIS_URL) return null;
   if (!redisClient) {
-    redisClient = new Redis(process.env.REDIS_URL, { lazyConnect: true, enableOfflineQueue: false });
+    redisClient = new Redis(process.env.REDIS_URL, { enableOfflineQueue: false });
   }
   return redisClient;
 }
